@@ -42,13 +42,13 @@ int main( )
 	USING_NAMESPACE_QPOASES
 
 	/* Setup data of first QP. */
-	real_t H[2*2] = { 1.0, 0.0, 0.0, 0.5 };
-	real_t A[1*2] = { 1.0, 1.0 };
+	real_t H[2*2] = { 1.0, 3.0, 3.0, 0.5 };
+	real_t A[2*2] = { 2.0, 11.0, 0.3, 0.5 };
 	real_t g[2] = { 1.5, 1.0 };
-	real_t lb[2] = { 0.5, -2.0 };
-	real_t ub[2] = { 5.0, 2.0 };
-	real_t lbA[1] = { -1.0 };
-	real_t ubA[1] = { 2.0 };
+	real_t lb[2] = { -100, -2000 };
+	real_t ub[2] = { 5000, 20000};
+	real_t lbA[1] = { -1.0, 0.0 };
+	real_t ubA[1] = { 2.0, 1.0 };
 
 	/* Setup data of second QP. */
 	real_t g_new[2] = { 1.0, 1.5 };

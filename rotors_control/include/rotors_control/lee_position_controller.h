@@ -70,6 +70,29 @@ class LeePositionController {
   void SetTrajectoryPoint(
     const mav_msgs::EigenTrajectoryPoint& command_trajectory);
 
+  void angle_barrier( const double& y,   const double&  alpha, const double&  beta,
+		  double* sigma, double* dsigma, double* d2sigma) const;
+
+  struct cbf_x_b
+  {
+	  Eigen::Vector3d xc;
+	  Eigen::Vector3d dxc;
+	  Eigen::Vector3d d2xc;
+	  double db;
+	  double d2b;
+	  double b;
+  };
+  struct cbf_prms_stru
+  {
+	  int cbfNum;
+	  double beta;
+	  double alpha;
+	  double eta3 = 10.0;
+  };
+
+  void getCbf(int i);
+
+
   LeePositionControllerParameters controller_parameters_;
   VehicleParameters vehicle_parameters_;
 
@@ -86,8 +109,15 @@ class LeePositionController {
   EigenOdometry odometry_;
 
   void ComputeDesiredAngularAcc(const Eigen::Vector3d& acceleration,
-                                Eigen::Vector3d* angular_acceleration) const;
+                                Eigen::Vector3d* angular_acceleration, double* deltaf) const;
   void ComputeDesiredAcceleration(Eigen::Vector3d* acceleration) const;
+
+
+  void Computehat( Eigen::Matrix3d* hatx,
+		  const Eigen::Vector3d& x) const;
+  void Computevee(const Eigen::Matrix3d& hatx,
+		   Eigen::Vector3d* x) const;
+
 };
 }
 

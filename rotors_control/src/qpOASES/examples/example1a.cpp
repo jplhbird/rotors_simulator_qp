@@ -51,13 +51,13 @@ int main( )
 	real_t ubA[1] = { 2.0 };
 
 	/* Setup data of second QP. */
-	real_t H_new[2*2] = { 1.0, 0.5, 0.5, 0.5 };
-	real_t A_new[1*2] = { 1.0, 5.0 };
-	real_t g_new[2] = { 1.0, 1.5 };
-	real_t lb_new[2] = { 0.0, -1.0 };
-	real_t ub_new[2] = { 5.0, -0.5 };
-	real_t lbA_new[1] = { -2.0 };
-	real_t ubA_new[1] = { 1.0 };
+	real_t H_new[2*2] = { 1.0, 0.0, 0.0, 0.5 };
+	real_t A_new[2*2] = { 1.0, 1.0, 1.0, 1.0 };
+	real_t g_new[2] = { 1.0, 500.0 };
+	real_t lb_new[2] = { -100.0, -100.0 };
+	real_t ub_new[2] = { 500.0, 500.0 };
+	real_t lbA_new[2] = { -100.0, 100.0 };
+	real_t ubA_new[2] = { 20.0, 50.0};
 
 
 	/* Setting up SQProblem object. */
@@ -75,6 +75,8 @@ int main( )
 	real_t xOpt[2];
 	example.getPrimalSolution( xOpt );
 	printf( "\nxOpt = [ %e, %e ];  objVal = %e\n\n", xOpt[0],xOpt[1],example.getObjVal() );
+
+	printf( "\nwww" );
 
 	return 0;
 }
