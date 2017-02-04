@@ -93,6 +93,11 @@ void LeePositionController::InitializeParameters() {
   angular_acc_to_rotor_velocities_ = controller_parameters_.allocation_matrix_.transpose()
       * (controller_parameters_.allocation_matrix_
       * controller_parameters_.allocation_matrix_.transpose()).inverse() * I;
+
+  //modified no Feb. 4th, the inertia matrix is moved to the attitude control:
+  angular_acc_to_rotor_velocities_ = controller_parameters_.allocation_matrix_.transpose()
+      * (controller_parameters_.allocation_matrix_
+      * controller_parameters_.allocation_matrix_.transpose()).inverse();
   initialized_params_ = true;
 }
 
@@ -111,11 +116,14 @@ void LeePositionController::CalculateRotorVelocities(Eigen::VectorXd* rotor_velo
   ComputeDesiredAcceleration(&acceleration);
 
   Eigen::Vector3d angular_acceleration;
-  double deltaf; //cbf based qp output
+  double deltaf = 0.0; //cbf based qp output
   ComputeDesiredAngularAcc(acceleration, &angular_acceleration, &deltaf);
 
   // Project thrust onto body z axis.
+  //original
   double thrust = -vehicle_parameters_.mass_ * acceleration.dot(odometry_.orientation.toRotationMatrix().col(2));
+  //modified on Feb., 4th, 2017, CLF-CBF:
+  thrust = thrust + deltaf * vehicle_parameters_.mass_;
 
   Eigen::Vector4d angular_acceleration_thrust;
   angular_acceleration_thrust.block<3, 1>(0, 0) = angular_acceleration;
@@ -212,7 +220,7 @@ void LeePositionController::ComputeDesiredAcceleration(Eigen::Vector3d* accelera
 	H1.setZero();
 	H1(0, 0) = 5;
 	H1(1, 1) = 5;
-	H1(2, 2) = 1;
+	H1(2, 2) = 5;
 	Eigen::Vector3d f1;
 	f1.setZero();
 
@@ -302,10 +310,16 @@ void LeePositionController::ComputeDesiredAngularAcc(const Eigen::Vector3d& acce
 
   Eigen::Vector3d angular_rate_error = odometry_.angular_velocity - R_des.transpose() * R * angular_rate_des;
 
-  *angular_acceleration = -1 * angle_error.cwiseProduct(normalized_attitude_gain_)
-                           - angular_rate_error.cwiseProduct(normalized_angular_rate_gain_)
-                           + odometry_.angular_velocity.cross(odometry_.angular_velocity); // we don't need the inertia matrix here
-
+//  *angular_acceleration = -1 * angle_error.cwiseProduct(normalized_attitude_gain_)
+//                           - angular_rate_error.cwiseProduct(normalized_angular_rate_gain_)
+//                           + odometry_.angular_velocity.cross(odometry_.angular_velocity); // we don't need the inertia matrix here
+//
+//
+//  // we  need the inertia matrix here, modified on Feb. 4th, 2017
+  *angular_acceleration = vehicle_parameters_.inertia_*
+		  (-1 * angle_error.cwiseProduct(normalized_attitude_gain_)
+                             - angular_rate_error.cwiseProduct(normalized_angular_rate_gain_))
+                             + odometry_.angular_velocity.cross(vehicle_parameters_.inertia_*odometry_.angular_velocity);
 
   //clf-cbf-based obstacle avoiding control
 
@@ -343,10 +357,23 @@ void LeePositionController::ComputeDesiredAngularAcc(const Eigen::Vector3d& acce
 //  LgV2 = (eOmega' * J_scale + epsilon2 * eR');
 //  LfV2 = (epsilon2 * eOmega' + c2 * eR') * deR...
 //          -  LgV2 * ( dR' * Rc * trajd.Omega + R' * Rc * trajd.dOmega);
-  double eta2 = 150.0;
-  double epsilon2 = 4.0;
-  double c2 = 20;
-  Eigen::Matrix3d J_scale;
+  double eta2 = 10.0;
+  double epsilon2 = 2.0;
+  double c2 = 15.0;
+
+
+  Eigen::Matrix3d J_scale = vehicle_parameters_.inertia_;
+  double minJ = vehicle_parameters_.inertia_(0,0);
+  if ((vehicle_parameters_.inertia_(0,0) < vehicle_parameters_.inertia_(1,1)) &
+		  (vehicle_parameters_.inertia_(0,0) < vehicle_parameters_.inertia_(2,2)))
+		  minJ = vehicle_parameters_.inertia_(0,0);
+  else if ((vehicle_parameters_.inertia_(1,1) < vehicle_parameters_.inertia_(0,0)) &
+		  (vehicle_parameters_.inertia_(1,1) < vehicle_parameters_.inertia_(2,2)))
+		  minJ = vehicle_parameters_.inertia_(1,1);
+  else if ((vehicle_parameters_.inertia_(2,2) < vehicle_parameters_.inertia_(1,1)) &
+		  (vehicle_parameters_.inertia_(2,2) < vehicle_parameters_.inertia_(0,0)))
+		  minJ = vehicle_parameters_.inertia_(2,2);
+  J_scale = J_scale / minJ;
 
   double V2;
   V2 = angular_rate_error.dot(J_scale * angular_rate_error) / 2.0 + epsilon2 * (angle_error.dot(angular_rate_error)) +
@@ -358,8 +385,6 @@ void LeePositionController::ComputeDesiredAngularAcc(const Eigen::Vector3d& acce
   double LfV2;
   LfV2 = deR.dot(epsilon2 * angular_rate_error + c2 * angle_error)
    -  LgV2.dot(dR.transpose() * R_des * angular_rate_des + R.transpose() * R_des * angular_rate_dot_des);
-
-
 
 //  % CBF construction
 //  A21 = zeros(cbf_prms.cbfNum, 5);
@@ -391,23 +416,43 @@ void LeePositionController::ComputeDesiredAngularAcc(const Eigen::Vector3d& acce
 
   //CBF construction
 
+  double Fd = -acceleration.dot(odometry_.orientation.toRotationMatrix().col(2));
+
   cbf_prms_stru cbf_prms;
-  cbf_prms.cbfNum = 2;  // number of obstacles
-  double pos_obstable[3][20];
-  Eigen::MatrixXd A21 = Eigen::MatrixXd::Random(cbf_prms.cbfNum, 5);
-  Eigen::VectorXd b21 = Eigen::MatrixXd::Random(cbf_prms.cbfNum, 1);
-  double gamma = 5.0;
+
+
+  //update the obstacles
+  cbf_prms.cbfNum = 1;  // number of obstacles
+  double pos_obstacles[3][20];
+  pos_obstacles[0][0] = 0;
+  pos_obstacles[1][0] = 0;
+  pos_obstacles[2][0] = 4;
+
+  pos_obstacles[0][0] = 10;
+  pos_obstacles[1][0] = 1;
+  pos_obstacles[2][0] = 3;
+
+
+  pos_obstacles[0][0] = 1011111;
+  pos_obstacles[1][0] = 1;
+  pos_obstacles[2][0] = 3;
+
+
+  Eigen::MatrixXd A21 = Eigen::MatrixXd::Zero(cbf_prms.cbfNum, 5);
+  Eigen::VectorXd b21 = Eigen::MatrixXd::Zero(cbf_prms.cbfNum, 1);
+  double gamma = 10.0;
 
   for (int i = 0; i < cbf_prms.cbfNum; i ++ ){
 	  cbf_x_b cbf_x_b_i;
-	  cbf_x_b_i.b = 2.0;
+	  cbf_x_b_i.b = 1.0;
 	  cbf_x_b_i.db = 0.0;
 	  cbf_x_b_i.d2b = 0.0;
-	  cbf_x_b_i.xc  << pos_obstable[0][i], pos_obstable[1][i], pos_obstable[2][i];
+	  cbf_x_b_i.xc  << pos_obstacles[0][i], pos_obstacles[1][i], pos_obstacles[2][i];
 	  cbf_x_b_i.dxc << 0.0, 0.0, 0.0;
 	  cbf_x_b_i.d2xc << 0.0, 0.0, 0.0;
-	  cbf_prms.beta = 10.0;
-	  cbf_prms.alpha = 1.0;
+	  double radius = 1.0;
+	  cbf_prms.beta = 1.0/(1.2 * radius * radius);
+	  cbf_prms.alpha = 0.25*radius*radius;
 	  cbf_prms.eta3 = 8.0;
 
 	  Eigen::Vector3d exo = odometry_.position - cbf_x_b_i.xc;
@@ -429,13 +474,17 @@ void LeePositionController::ComputeDesiredAngularAcc(const Eigen::Vector3d& acce
 	  double g_hat = exo.dot(exo) - cbf_x_b_i.b - sigma;
 	  double dg_hat = 2 * evo.dot(exo) - db -dsigma * p;
 	  double h_hat = gamma * g_hat + dg_hat;
+
+	  printf( "h_hat = %e \n", h_hat );
+
+
 	  Eigen::Vector3d xi = 2 * exo - dsigma * R * e_3;
 	  Eigen::Vector4d Lgh_hat;
  	  Lgh_hat(0) = xi.dot(R * e_3);
 	  Eigen::Vector3d Lgh_haddd = dsigma * e_3_hat.transpose() * R.transpose() * exo;
 	  Lgh_hat.tail(3) = Lgh_haddd;
 
-	  double Fd = -acceleration.dot(odometry_.orientation.toRotationMatrix().col(2));
+
 	  double Lfh_hat = gamma * dg_hat + 2 * (evo.dot(evo)) - d2b -d2sigma * p *p
               - dsigma  * (2 * evo.dot(dR * e_3) + exo.dot(R * omega_hat * omega_hat * e_3))
               - xi.dot (d2xo + vehicle_parameters_.gravity_ * e_3) + Lgh_hat(0) * Fd;
@@ -464,26 +513,48 @@ void LeePositionController::ComputeDesiredAngularAcc(const Eigen::Vector3d& acce
 
   //qp
 	Eigen::MatrixXd H2 = Eigen::MatrixXd::Zero(5,5);
+	H2(0, 0) = 200;
+
 	H2(0, 0) = 25;
 	H2(1, 1) = 1;
 	H2(2, 2) = 1;
 	H2(3, 3) = 1;
+	H2(4, 4) = 741.28;
+	H2(4, 4) = 741.5;
+	H2(4, 4) = 750;
+
+
 	H2(4, 4) = 200;
-	Eigen::Vector2d f2;
-	f2.setZero();
+
+	Eigen::VectorXd f2 = Eigen::VectorXd::Zero(5);
 	Eigen::Matrix3d I;
 	I.setZero();
 	I(0, 0) = 1;
 	I(1, 1) = 1;
 	I(2, 2) = 1;
 	Eigen::Vector3d O(0,0,0);
-	Eigen::MatrixXd A2 = Eigen::MatrixXd::Random(cbf_prms.cbfNum + 8, 5);
-	Eigen::MatrixXd b2 = Eigen::MatrixXd::Random(cbf_prms.cbfNum + 8, 1);
+	Eigen::MatrixXd A2 = Eigen::MatrixXd::Zero(cbf_prms.cbfNum + 8, 5);
+	Eigen::MatrixXd b2 = Eigen::MatrixXd::Zero(cbf_prms.cbfNum + 8, 1);
+
+	//value of A2 and b2:
+	A2.block(0, 1, 1, 3) << LgV2(0), LgV2(1), LgV2(2);
+	A2(0, 4) = -1.0;
+	A2.block(1, 0, cbf_prms.cbfNum, 5) = A21;
+	A2(cbf_prms.cbfNum + 1, 0) = 1.0;
+	A2.block(cbf_prms.cbfNum + 2, 1, 3, 3) = I;
+	A2.block(cbf_prms.cbfNum + 5, 1, 3, 3) = -I;
+
+ 	b2(0) = -LfV2 - eta2 * V2;
+ 	for (int j = 0; j < cbf_prms.cbfNum; j ++)
+ 	{
+ 		b2(j + 1) = b21(j);
+ 	}
+ 	b2.block(cbf_prms.cbfNum + 1, 0, 7, 1) << (80 - Fd), 100, 100, 100, 100, 100, 100; //bounded of force and moment
 
 	USING_NAMESPACE_QPOASES
 	SQProblem attitudeqp( 5,1 );
 	real_t H2_[5 * 5];
-	real_t f2_[5 * 1];
+	real_t f2_[5 * 1] = {0.0, 0.0, 0.0, 0.0, 0.0};
 	real_t A2_[(cbf_prms.cbfNum + 8)* 5];
 	real_t b2_[cbf_prms.cbfNum + 8];
 
@@ -500,23 +571,32 @@ void LeePositionController::ComputeDesiredAngularAcc(const Eigen::Vector3d& acce
 		}
 		b2_[iqp] = b2(iqp);
 	}
+
+
 	real_t  *ptrnll = NULL;
-	/* Solve first QP. */
  	int nWSR1 = 10;
     //example.hotstart( H_new,g_new,A_new,lb_new,ub_new,lbA_new,ubA_new, nWSR,0);
-//	//A2_*x<=b2_
+	//A2_*x<=b2_
     attitudeqp.init(H2_,f2_,A2_,ptrnll,ptrnll,ptrnll,b2_, nWSR1, 0 );
+
+    attitudeqp.hotstart(H2_,f2_,A2_,ptrnll,ptrnll,ptrnll,b2_, nWSR1, 0 );
 
     real_t attitudeOpt[5];
     attitudeqp.getPrimalSolution( attitudeOpt );
-	printf( "\nxOpt = [ %e, %e, %e ];  objVal = %e\n\n", attitudeOpt[0], attitudeOpt[1], attitudeOpt[2],
+	printf( "\nxOpt = [ %e, %e, %e, %e, %e];  objVal = %e\n\n", attitudeOpt[0], attitudeOpt[1], attitudeOpt[2],  attitudeOpt[3],  attitudeOpt[4],
 			attitudeqp.getObjVal() );
 
+
+
+	// return the control input
 	*deltaf = attitudeOpt[0];
+	Eigen::Vector3d dOmega;
+	dOmega(0) = attitudeOpt[1],
+	dOmega(1) = attitudeOpt[2],
+	dOmega(2) = attitudeOpt[3];
+	*angular_acceleration = vehicle_parameters_.inertia_* dOmega + omega_hat * vehicle_parameters_.inertia_ * omega;
 
-
-
-
+	ROS_INFO_STREAM("b2"<<b2);
 
 }
 
