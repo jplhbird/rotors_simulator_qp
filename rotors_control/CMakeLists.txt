@@ -10,9 +10,12 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   sensor_msgs
   cmake_modules
+  dynamic_reconfigure
 )
 
 find_package(Eigen REQUIRED)
+
+generate_dynamic_reconfigure_options(cfg/cbf_clf.cfg)
 
 catkin_package(
   INCLUDE_DIRS include ${Eigen_INCLUDE_DIRS}
@@ -27,6 +30,8 @@ include_directories(
   ${Eigen_INCLUDE_DIRS}
   src/qpOASES/include
 )
+
+
 
 
 #
@@ -98,3 +103,7 @@ install(
   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
   FILES_MATCHING PATTERN "*.h"
 )
+
+
+# make sure configure headers are built before any node using them
+add_dependencies(lee_position_controller_node ${PROJECT_NAME}_gencfg)

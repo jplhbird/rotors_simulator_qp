@@ -26,9 +26,15 @@ namespace rotors_control {
 
 LeePositionController::LeePositionController()
     : initialized_params_(false),
-      controller_active_(false) {
+      controller_active_(false) ,pnh_("~/clf_cbf_para"){
   InitializeParameters();
 
+
+	//config_motion = asctec_mav_motion_planning::motion_planning_paraConfig::__getDefault__();
+	  // bring up dynamic reconfigure
+//	motionconf_srv_ = new ReconfigureServer(pnh_);
+//	ReconfigureServer::CallbackType f = boost::bind(&LeePositionController::cbmotionConfig, this, _1, _2);
+//	motionconf_srv_->setCallback(f);
 
   //test beginning
 
@@ -71,6 +77,11 @@ LeePositionController::LeePositionController()
 	//test finish
 
 }
+
+//void LeePositionController::cbmotionConfig(rotors_control::cbf_clfConfig & config, uint32_t level){
+//
+//
+//}
 
 LeePositionController::~LeePositionController() {}
 
@@ -202,6 +213,10 @@ void LeePositionController::ComputeDesiredAcceleration(Eigen::Vector3d* accelera
 	epsilon1 = 2;
 	c1 = 8;
 
+	eta1 = clf_cbfpara.eta1;
+	epsilon1 = clf_cbfpara.epsilon1;
+	c1 = clf_cbfpara.c1;
+
 	double V1;
 	Eigen::Vector3d LgV1;
 	double LfV1;
@@ -251,7 +266,7 @@ void LeePositionController::ComputeDesiredAcceleration(Eigen::Vector3d* accelera
 	/* Get and print solution of second QP. */
 	real_t accOpt[3];
 	positionqp.getPrimalSolution( accOpt );
-	printf( "\nxOpt = [ %e, %e, %e ];  objVal = %e\n\n", accOpt[0], accOpt[1], accOpt[2], positionqp.getObjVal() );
+	printf( "\n force = [ %e, %e, %e ];  objVal = %e\n\n", accOpt[0], accOpt[1], accOpt[2], positionqp.getObjVal() );
 	printf("xe =  [ %e, %e, %e ];  ve = [ %e, %e, %e ]\n\n ", position_error(0), position_error(1), position_error(2),
 			velocity_error(0), velocity_error(1), velocity_error(2));
 
@@ -266,9 +281,12 @@ void LeePositionController::ComputeDesiredAcceleration(Eigen::Vector3d* accelera
 	//contains the gravity, notice
 	acc_nogravity = acc_nogravity + vehicle_parameters_.gravity_ * e_3;
 
-	//ENU frame:
-	//notice the sign of acc here:
-	*acceleration = -acc_nogravity;
+	if (clf_cbfpara.flag_clf == 1)
+	{
+		//ENU frame:
+		//notice the sign of acc here:
+		*acceleration = -acc_nogravity;
+	}
 
 	//printf(" acc = [ %e, %e, %e ]\n\n ", acceleration(0), acceleration(1), acceleration(2));
 
@@ -360,6 +378,10 @@ void LeePositionController::ComputeDesiredAngularAcc(const Eigen::Vector3d& acce
   double eta2 = 10.0;
   double epsilon2 = 2.0;
   double c2 = 15.0;
+
+  eta2 = clf_cbfpara.eta2;
+  epsilon2 = clf_cbfpara.epsilon2;
+  c2 = clf_cbfpara.c2;
 
 
   Eigen::Matrix3d J_scale = vehicle_parameters_.inertia_;
@@ -574,7 +596,7 @@ void LeePositionController::ComputeDesiredAngularAcc(const Eigen::Vector3d& acce
 
 
 	real_t  *ptrnll = NULL;
- 	int nWSR1 = 10;
+ 	int nWSR1 = 100;
     //example.hotstart( H_new,g_new,A_new,lb_new,ub_new,lbA_new,ubA_new, nWSR,0);
 	//A2_*x<=b2_
     attitudeqp.init(H2_,f2_,A2_,ptrnll,ptrnll,ptrnll,b2_, nWSR1, 0 );
@@ -583,18 +605,30 @@ void LeePositionController::ComputeDesiredAngularAcc(const Eigen::Vector3d& acce
 
     real_t attitudeOpt[5];
     attitudeqp.getPrimalSolution( attitudeOpt );
-	printf( "\nxOpt = [ %e, %e, %e, %e, %e];  objVal = %e\n\n", attitudeOpt[0], attitudeOpt[1], attitudeOpt[2],  attitudeOpt[3],  attitudeOpt[4],
-			attitudeqp.getObjVal() );
+
 
 
 
 	// return the control input
-	*deltaf = attitudeOpt[0];
-	Eigen::Vector3d dOmega;
-	dOmega(0) = attitudeOpt[1],
-	dOmega(1) = attitudeOpt[2],
-	dOmega(2) = attitudeOpt[3];
-	*angular_acceleration = vehicle_parameters_.inertia_* dOmega + omega_hat * vehicle_parameters_.inertia_ * omega;
+	if (clf_cbfpara.flag_clf == 1){
+
+		printf( "\n delta force, moment, and delta V = [ %e, %e, %e, %e, %e];  objVal = %e\n\n", attitudeOpt[0], attitudeOpt[1], attitudeOpt[2],  attitudeOpt[3],  attitudeOpt[4],
+				attitudeqp.getObjVal() );
+
+		*deltaf = attitudeOpt[0];
+		Eigen::Vector3d dOmega;
+		dOmega(0) = attitudeOpt[1],
+		dOmega(1) = attitudeOpt[2],
+		dOmega(2) = attitudeOpt[3];
+		*angular_acceleration = vehicle_parameters_.inertia_* dOmega + omega_hat * vehicle_parameters_.inertia_ * omega;
+	}
+
+	*angular_acceleration = vehicle_parameters_.inertia_*
+			  (-1 * angle_error.cwiseProduct(normalized_attitude_gain_)
+	                             - angular_rate_error.cwiseProduct(normalized_angular_rate_gain_))
+	                             + odometry_.angular_velocity.cross(vehicle_parameters_.inertia_*odometry_.angular_velocity);
+
+	ROS_INFO_STREAM("lee_position_controller_.clf_cbfpara.flag_clf: "<<clf_cbfpara.flag_clf);
 
 	ROS_INFO_STREAM("b2"<<b2);
 

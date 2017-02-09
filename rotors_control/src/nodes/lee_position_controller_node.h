@@ -37,6 +37,16 @@
 #include "rotors_control/common.h"
 #include "rotors_control/lee_position_controller.h"
 
+
+
+// dynamic reconfigure includes
+#include <dynamic_reconfigure/server.h>
+#include <rotors_control/cbf_clfConfig.h>
+
+//motion_planning_paraConfig.h
+typedef dynamic_reconfigure::Server<rotors_control::cbf_clfConfig> ReconfigureServer;
+
+
 namespace rotors_control {
 
 class LeePositionControllerNode {
@@ -74,6 +84,16 @@ class LeePositionControllerNode {
       const geometry_msgs::PoseStampedConstPtr& pose_msg);
 
   void OdometryCallback(const nav_msgs::OdometryConstPtr& odometry_msg);
+
+
+  ros::NodeHandle pnh_;
+  // dynamic reconfigure
+  ReconfigureServer *motionconf_srv_;
+  void cbmotionConfig(rotors_control::cbf_clfConfig & config, uint32_t level);
+  rotors_control::cbf_clfConfig config_motion;
+
+
+
 };
 }
 

@@ -29,6 +29,12 @@
 
 #include <qpOASES.hpp>
 
+// dynamic reconfigure includes
+#include <dynamic_reconfigure/server.h>
+#include <rotors_control/cbf_clfConfig.h>
+
+//motion_planning_paraConfig.h
+typedef dynamic_reconfigure::Server<rotors_control::cbf_clfConfig> ReconfigureServer;
 
 namespace rotors_control {
 
@@ -55,6 +61,18 @@ class LeePositionControllerParameters {
   Eigen::Vector3d attitude_gain_;
   Eigen::Vector3d angular_rate_gain_;
   RotorConfiguration rotor_configuration_;
+};
+
+
+class clf_cbfparameters{
+public:
+	double eta1;
+	double epsilon1;
+	double c1;
+	double eta2 ;
+	double epsilon2;
+	double c2;
+	int flag_clf;
 };
 
 class LeePositionController {
@@ -96,6 +114,8 @@ class LeePositionController {
   LeePositionControllerParameters controller_parameters_;
   VehicleParameters vehicle_parameters_;
 
+  clf_cbfparameters clf_cbfpara;
+
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
  private:
   bool initialized_params_;
@@ -117,6 +137,13 @@ class LeePositionController {
 		  const Eigen::Vector3d& x) const;
   void Computevee(const Eigen::Matrix3d& hatx,
 		   Eigen::Vector3d* x) const;
+
+  ros::NodeHandle pnh_;
+
+  // dynamic reconfigure
+  ReconfigureServer *motionconf_srv_;
+  void cbmotionConfig(rotors_control::cbf_clfConfig & config, uint32_t level);
+  rotors_control::cbf_clfConfig config_motion;
 
 };
 }

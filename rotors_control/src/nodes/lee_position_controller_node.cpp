@@ -27,7 +27,7 @@
 
 namespace rotors_control {
 
-LeePositionControllerNode::LeePositionControllerNode() {
+LeePositionControllerNode::LeePositionControllerNode():pnh_("~/clf_cbf_para"){
   InitializeParams();
 
   ros::NodeHandle nh;
@@ -48,7 +48,33 @@ LeePositionControllerNode::LeePositionControllerNode() {
 
   command_timer_ = nh.createTimer(ros::Duration(0), &LeePositionControllerNode::TimedCommandCallback, this,
                                   true, false);
+
+
+	//config_motion = asctec_mav_motion_planning::motion_planning_paraConfig::__getDefault__();
+	  // bring up dynamic reconfigure
+	motionconf_srv_ = new ReconfigureServer(pnh_);
+	ReconfigureServer::CallbackType f = boost::bind(&LeePositionControllerNode::cbmotionConfig, this, _1, _2);
+	motionconf_srv_->setCallback(f);
+
+
 }
+
+
+void LeePositionControllerNode::cbmotionConfig(rotors_control::cbf_clfConfig & config, uint32_t level){
+	lee_position_controller_.clf_cbfpara.c1 = config.c1;
+	lee_position_controller_.clf_cbfpara.eta1 = config.eta1;
+	lee_position_controller_.clf_cbfpara.epsilon1 = config.epsilon1;
+
+	lee_position_controller_.clf_cbfpara.c2 = config.c2;
+	lee_position_controller_.clf_cbfpara.eta2 = config.eta2;
+	lee_position_controller_.clf_cbfpara.epsilon2 = config.epsilon2;
+
+	lee_position_controller_.clf_cbfpara.flag_clf = config.flag_clf;
+
+	ROS_INFO_STREAM("lee_position_controller_.clf_cbfpara.flag_clf: "<<lee_position_controller_.clf_cbfpara.flag_clf);
+}
+
+
 
 LeePositionControllerNode::~LeePositionControllerNode() { }
 
