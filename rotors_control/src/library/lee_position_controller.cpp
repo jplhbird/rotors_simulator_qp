@@ -175,7 +175,7 @@ void LeePositionController::ComputeDesiredAcceleration(Eigen::Vector3d* accelera
 
 
   //clf position control:
-  //Yushu Yu, Feb., 2016
+  //Yushu Yu, Feb., 2017
 
 
 //  % first level of QP : compute the virtual force
@@ -285,7 +285,7 @@ void LeePositionController::ComputeDesiredAcceleration(Eigen::Vector3d* accelera
 	{
 		//ENU frame:
 		//notice the sign of acc here:
-		*acceleration = -acc_nogravity;
+		//*acceleration = -acc_nogravity;
 	}
 
 	//printf(" acc = [ %e, %e, %e ]\n\n ", acceleration(0), acceleration(1), acceleration(2));
@@ -620,13 +620,13 @@ void LeePositionController::ComputeDesiredAngularAcc(const Eigen::Vector3d& acce
 		dOmega(0) = attitudeOpt[1],
 		dOmega(1) = attitudeOpt[2],
 		dOmega(2) = attitudeOpt[3];
-		*angular_acceleration = vehicle_parameters_.inertia_* dOmega + omega_hat * vehicle_parameters_.inertia_ * omega;
+		//*angular_acceleration = vehicle_parameters_.inertia_* dOmega + omega_hat * vehicle_parameters_.inertia_ * omega;
 	}
 
-	*angular_acceleration = vehicle_parameters_.inertia_*
-			  (-1 * angle_error.cwiseProduct(normalized_attitude_gain_)
-	                             - angular_rate_error.cwiseProduct(normalized_angular_rate_gain_))
-	                             + odometry_.angular_velocity.cross(vehicle_parameters_.inertia_*odometry_.angular_velocity);
+//	*angular_acceleration = vehicle_parameters_.inertia_*
+//			  (-1 * angle_error.cwiseProduct(normalized_attitude_gain_)
+//	                             - angular_rate_error.cwiseProduct(normalized_angular_rate_gain_))
+//	                             + odometry_.angular_velocity.cross(vehicle_parameters_.inertia_*odometry_.angular_velocity);
 
 	ROS_INFO_STREAM("lee_position_controller_.clf_cbfpara.flag_clf: "<<clf_cbfpara.flag_clf);
 
